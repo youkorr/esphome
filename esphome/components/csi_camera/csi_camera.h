@@ -7,7 +7,7 @@
 
 #ifdef USE_ESP32
 
-// Specific check for ESP32-P4
+// ESP32-P4 specific verification
 #if defined(CONFIG_IDF_TARGET_ESP32P4) || defined(CONFIG_IDF_TARGET) && CONFIG_IDF_TARGET_ESP32P4
 #define HAS_ESP32_P4_CAMERA 1
 #include "esp_cam_ctlr_csi.h"
@@ -26,16 +26,16 @@
 namespace esphome {
 namespace csi_camera {
 
-class CSICamera : public Component, public i2c::I2CDevice {
+class CsiCamera : public Component, public i2c::I2CDevice {
  public:
-  CSICamera() = default;
-  ~CSICamera();
+  CsiCamera() = default;
+  ~CsiCamera();
 
   void setup() override;
   void dump_config() override;
   float get_setup_priority() const override;
 
-  // Configuration
+  // Configuration methods
   void set_name(const std::string &name) { this->name_ = name; }
   void set_external_clock_pin(uint8_t pin) { this->external_clock_pin_ = pin; }
   void set_external_clock_frequency(uint32_t freq) { this->external_clock_frequency_ = freq; }
@@ -45,10 +45,10 @@ class CSICamera : public Component, public i2c::I2CDevice {
   // Getters
   const std::string &get_name() const { return this->name_; }
 
-  // Capture functions
+  // Camera operations
   bool take_snapshot();
   
-  // Streaming functions
+  // Streaming operations
   bool start_streaming();
   bool stop_streaming();
 
@@ -62,7 +62,7 @@ class CSICamera : public Component, public i2c::I2CDevice {
   size_t get_frame_buffer_size() const { return 0; }
 #endif
 
-  // Callbacks for streaming
+  // Frame callbacks
   void add_on_frame_callback(std::function<void(uint8_t*, size_t)> &&callback) {
     this->on_frame_callbacks_.add(std::move(callback));
   }
@@ -100,7 +100,7 @@ class CSICamera : public Component, public i2c::I2CDevice {
   bool streaming_active_{false};
   bool streaming_should_stop_{false};
   
-  // Structure for frames in queue
+  // Structure for queued frames
   struct FrameData {
     void* buffer;
     size_t size;
@@ -111,8 +111,8 @@ class CSICamera : public Component, public i2c::I2CDevice {
   // Configuration
   std::string name_{"CSI Camera"};
   uint8_t external_clock_pin_{0};
-  uint32_t external_clock_frequency_{20000000};  // Default 20MHz
-  uint8_t sensor_address_{0x24};  // Default I2C address of the sensor
+  uint32_t external_clock_frequency_{20000000};  // 20MHz default
+  uint8_t sensor_address_{0x24};  // Default I2C address for sensor
   GPIOPin *reset_pin_{nullptr};
 
   // Callbacks
@@ -123,3 +123,4 @@ class CSICamera : public Component, public i2c::I2CDevice {
 }  // namespace esphome
 
 #endif  // USE_ESP32
+
