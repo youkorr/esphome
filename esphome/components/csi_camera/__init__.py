@@ -7,7 +7,7 @@ from esphome import pins
 DEPENDENCIES = ['esp32', 'i2c']
 
 csi_camera_ns = cg.esphome_ns.namespace('csi_camera')
-CSICamera = csi_camera_ns.class_('CSICamera', cg.Component, i2c.I2CDevice)
+CsiCamera = csi_camera_ns.class_('CsiCamera', cg.Component, i2c.I2CDevice)
 
 CONF_EXTERNAL_CLOCK = "external_clock"
 CONF_RESET_PIN = "reset_pin"
@@ -20,7 +20,7 @@ EXTERNAL_CLOCK_SCHEMA = cv.Schema({
 })
 
 CONFIG_SCHEMA = cv.Schema({
-    cv.GenerateID(): cv.declare_id(CSICamera),
+    cv.GenerateID(): cv.declare_id(CsiCamera),
     cv.Optional(CONF_NAME, default="CSI Camera"): cv.string,
     cv.Optional(CONF_EXTERNAL_CLOCK): EXTERNAL_CLOCK_SCHEMA,
     cv.Optional(CONF_RESET_PIN): pins.gpio_output_pin_schema,
@@ -32,18 +32,18 @@ async def to_code(config):
     await cg.register_component(var, config)
     await i2c.register_i2c_device(var, config)
     
-    # Configure name
+    # Name configuration
     cg.add(var.set_name(config[CONF_NAME]))
     
-    # Configure sensor address
+    # Sensor address configuration
     if CONF_SENSOR_ADDRESS in config:
         cg.add(var.set_sensor_address(config[CONF_SENSOR_ADDRESS]))
     
-    # Configure external clock
+    # External clock configuration
     if CONF_EXTERNAL_CLOCK in config:
         clock_config = config[CONF_EXTERNAL_CLOCK]
         
-        # Clock pin - correction to get the GPIO number
+        # Clock pin - correction to get GPIO number
         pin_config = clock_config[CONF_PIN]
         if isinstance(pin_config, dict):
             pin_num = pin_config.get('number', pin_config.get('pin', 0))
@@ -55,7 +55,7 @@ async def to_code(config):
         freq = clock_config[CONF_FREQUENCY]
         cg.add(var.set_external_clock_frequency(int(freq)))
     
-    # Configure reset pin
+    # Reset pin configuration
     if CONF_RESET_PIN in config:
         reset_pin = await gpio.gpio_pin_expression(config[CONF_RESET_PIN])
         cg.add(var.set_reset_pin(reset_pin))
@@ -63,3 +63,4 @@ async def to_code(config):
     # Add necessary build flags
     cg.add_build_flag("-DHAS_ESP32_P4_CAMERA=1")
     cg.add_build_flag("-DCONFIG_IDF_TARGET_ESP32P4=1")
+
