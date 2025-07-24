@@ -24,8 +24,8 @@ CONFIG_SCHEMA = cv.Schema({
     cv.Optional(CONF_NAME, default="CSI Camera"): cv.string,
     cv.Optional(CONF_EXTERNAL_CLOCK): EXTERNAL_CLOCK_SCHEMA,
     cv.Optional(CONF_RESET_PIN): pins.gpio_output_pin_schema,
-    cv.Optional(CONF_SENSOR_ADDRESS): cv.i2c_address,
-}).extend(cv.COMPONENT_SCHEMA).extend(i2c.i2c_device_schema)
+    cv.Optional(CONF_SENSOR_ADDRESS, default=0x24): cv.i2c_address,
+}).extend(cv.COMPONENT_SCHEMA).extend(i2c.i2c_device_schema(default_address=0x24))
 
 async def to_code(config):
     var = cg.new_Pvariable(config[CONF_ID])
