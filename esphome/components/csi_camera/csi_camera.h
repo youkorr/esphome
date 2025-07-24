@@ -113,6 +113,7 @@ class CsiCamera : public Component, public i2c::I2CDevice {
   uint8_t external_clock_pin_{0};
   uint32_t external_clock_frequency_{20000000};  // 20MHz default
   GPIOPin *reset_pin_{nullptr};
+  uint8_t sensor_address_{0x24}; 
 
   // Callbacks
   CallbackManager<void(uint8_t*, size_t)> on_frame_callbacks_;
