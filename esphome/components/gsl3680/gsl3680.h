@@ -32,3 +32,4 @@ class GSL3680 : public touchscreen::Touchscreen, public i2c::I2CDevice {
 
 }
 }
+
