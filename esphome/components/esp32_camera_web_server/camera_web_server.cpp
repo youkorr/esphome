@@ -71,14 +71,17 @@ void CameraWebServer::setup() {
 
 void CameraWebServer::on_camera_image(const std::shared_ptr<camera::CameraImage> &image) {
   if (this->running_ && image->was_requested_by(camera::WEB_REQUESTER)) {
-    this->image_ = image;
+    {
+      LockGuard lock(this->image_lock_);
+      this->image_ = image;
+    }
     xSemaphoreGive(this->semaphore_);
   }
 }
 
 void CameraWebServer::on_shutdown() {
   this->running_ = false;
-  this->image_ = nullptr;
+  this->clear_image_();
   httpd_stop(this->httpd_);
   this->httpd_ = nullptr;
   vSemaphoreDelete(this->semaphore_);
@@ -105,27 +108,44 @@ float CameraWebServer::get_setup_priority() const { return setup_priority::LATE;
 
 void CameraWebServer::loop() {
   if (!this->running_) {
-    this->image_ = nullptr;
+    this->clear_image_();
   }
+}
+
+void CameraWebServer::clear_image_() {
+  LockGuard lock(this->image_lock_);
+  this->image_ = nullptr;
 }
 
 std::shared_ptr<esphome::camera::CameraImage> CameraWebServer::wait_for_image_() {
   std::shared_ptr<esphome::camera::CameraImage> image;
-  image.swap(this->image_);
+  this->take_image_(image);
 
   if (!image) {
     // retry as we might still be fetching image
     xSemaphoreTake(this->semaphore_, IMAGE_REQUEST_TIMEOUT / portTICK_PERIOD_MS);
-    image.swap(this->image_);
+    this->take_image_(image);
   }
 
   return image;
 }
 
+void CameraWebServer::take_image_(std::shared_ptr<esphome::camera::CameraImage> &into) {
+  // The camera hands images over from its own task while this one is still
+  // sending the last, and a shared_ptr is a pointer and a reference count that
+  // are written separately. Swapping one from two tasks at once can be caught
+  // half done, which reads back as a null pointer -- and the send that follows
+  // dereferences it. The window is only open while the sender is behind the
+  // camera, which is why it shows up at higher resolutions and not at all when
+  // the two keep pace.
+  LockGuard lock(this->image_lock_);
+  into.swap(this->image_);
+}
+
 esp_err_t CameraWebServer::handler_(struct httpd_req *req) {
   esp_err_t res = ESP_FAIL;
 
-  this->image_ = nullptr;
+  this->clear_image_();
   this->running_ = true;
 
   switch (this->mode_) {
@@ -139,7 +159,7 @@ esp_err_t CameraWebServer::handler_(struct httpd_req *req) {
   }
 
   this->running_ = false;
-  this->image_ = nullptr;
+  this->clear_image_();
   return res;
 }
 

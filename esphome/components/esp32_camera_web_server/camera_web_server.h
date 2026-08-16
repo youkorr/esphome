@@ -43,6 +43,8 @@ class CameraWebServer final : public Component, public camera::CameraListener {
   void *httpd_{nullptr};
   SemaphoreHandle_t semaphore_;
   std::shared_ptr<camera::CameraImage> image_;
+  // image_ is written by the camera's task and taken by the HTTP one.
+  Mutex image_lock_;
   bool running_{false};
   Mode mode_{STREAM};
 };
