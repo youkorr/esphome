@@ -286,6 +286,10 @@ class ESPVideoCamera : public camera::Camera {
   bool streaming_{false};
   uint32_t capture_width_{0};
   uint32_t capture_height_{0};
+  /// Bytes per row as the driver reports them. Not always width times the
+  /// bytes per pixel: the ISP is free to pad rows, and a consumer told the
+  /// wrong pitch reads every row a little inside the previous one.
+  uint32_t capture_stride_{0};
   static constexpr int MAX_BUFFERS = 3;
   struct MappedBuffer {
     void *start{nullptr};

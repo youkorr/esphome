@@ -1031,7 +1031,7 @@ bool ESPVideoCamera::offer_raw_frame_(uint32_t index) {
   frame.data = data;
   frame.width = this->capture_width_;
   frame.height = this->capture_height_;
-  frame.stride = this->capture_width_ * 2;  // RGB565: the ISP writes rows back to back
+  frame.stride = this->capture_stride_;
   frame.format = camera::PIXEL_FORMAT_RGB565;
   return this->raw_consumer_->on_raw_frame(frame);
 }
@@ -1123,13 +1123,26 @@ bool ESPVideoCamera::configure_capture_format_(uint32_t pixelformat) {
   if (ioctl(this->capture_fd_, VIDIOC_G_FMT, &fmt) == 0) {
     this->capture_width_ = fmt.fmt.pix.width;
     this->capture_height_ = fmt.fmt.pix.height;
+    this->capture_stride_ = fmt.fmt.pix.bytesperline;
     negotiated = fmt.fmt.pix.pixelformat;
   } else {
     this->capture_width_ = width;
     this->capture_height_ = height;
+    this->capture_stride_ = 0;
   }
   ESP_LOGI(TAG, "Capture resolution: %ux%u (%s)", (unsigned) this->capture_width_, (unsigned) this->capture_height_,
            fourcc_to_string(negotiated).c_str());
+  // bytesperline is left at zero by drivers that do not fill it in, and is
+  // meaningless for a compressed format, so fall back to unpadded rows.
+  if (pixelformat == V4L2_PIX_FMT_RGB565) {
+    uint32_t unpadded = this->capture_width_ * 2;
+    if (this->capture_stride_ < unpadded)
+      this->capture_stride_ = unpadded;
+    if (this->capture_stride_ != unpadded) {
+      ESP_LOGI(TAG, "Rows are padded to %u bytes (%u without padding)", (unsigned) this->capture_stride_,
+               (unsigned) unpadded);
+    }
+  }
 
   // The pixel format is not negotiable: a fallback would be streamed as a corrupt
   // image rather than reported. JPEG and MJPEG are the same payload here.
