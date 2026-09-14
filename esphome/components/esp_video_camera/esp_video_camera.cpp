@@ -956,13 +956,34 @@ void ESPVideoCamera::loop_jpeg_pipeline_() {
   // which case the frame it was reading before is the one that goes back.
   if (!capture_alive)
     return;
-  int previously_held = this->held_buffer_index_;
-  this->held_buffer_index_ = consumer_kept_frame ? (int) cap_buf.index : -1;
-  if (previously_held >= 0)
-    this->requeue_capture_buffer_((uint32_t) previously_held);
-  if (!consumer_kept_frame && ioctl(this->capture_fd_, VIDIOC_QBUF, &cap_buf) < 0) {
+  if (consumer_kept_frame) {
+    // The consumer has moved on to this frame, so the one it was reading is
+    // free. Declining leaves the held frame alone: the consumer may still be
+    // drawing from it.
+    int previously_held = this->held_buffer_index_;
+    this->held_buffer_index_ = (int) cap_buf.index;
+    if (previously_held >= 0)
+      this->requeue_capture_buffer_((uint32_t) previously_held);
+  } else if (ioctl(this->capture_fd_, VIDIOC_QBUF, &cap_buf) < 0) {
     ESP_LOGW(TAG, "capture QBUF failed: %s", strerror(errno));
   }
+}
+
+void ESPVideoCamera::request_raw_frames(bool enable) {
+  this->raw_frames_wanted_ = enable;
+  if (!enable)
+    this->release_raw_frame();
+}
+
+void ESPVideoCamera::release_raw_frame() {
+  if (this->held_buffer_index_ < 0)
+    return;
+  auto index = (uint32_t) this->held_buffer_index_;
+  this->held_buffer_index_ = -1;
+  // Only worth handing back while the capture still exists; stop_capture_()
+  // unmaps everything anyway.
+  if (this->streaming_ && this->capture_fd_ >= 0)
+    this->requeue_capture_buffer_(index);
 }
 
 bool ESPVideoCamera::requeue_capture_buffer_(uint32_t index) {

@@ -52,6 +52,7 @@ void LVGLCameraDisplay::release_canvas_() {
   // geometry anyway.
   this->draw_buf_ready_ = false;
   this->draw_buf_.data = nullptr;
+  this->refresh_done_ = true;
   this->stats_since_ms_ = 0;
   this->stats_frames_ = 0;
 }
@@ -74,7 +75,15 @@ bool LVGLCameraDisplay::on_raw_frame(const esp_video_camera::RawFrame &frame) {
     return false;
   }
 
+  // A frame that arrives while LVGL is still reading the last one is dropped
+  // rather than swapped in: the camera keeps holding the frame on screen, and
+  // the next one lands cleanly. LVGL refreshes far faster than the sensor
+  // delivers, so this costs no frames in practice.
+  if (!this->refresh_done_)
+    return false;
+
   if (!this->draw_buf_ready_) {
+    lv_display_add_event_cb(lv_obj_get_display(canvas), refresh_done_cb_, LV_EVENT_REFR_READY, this);
     lv_draw_buf_init(&this->draw_buf_, frame.width, frame.height, LV_COLOR_FORMAT_RGB565, frame.stride,
                      (void *) frame.data, frame.stride * frame.height);
     // Without this LVGL treats the buffer as constant image data and may skip
@@ -90,6 +99,7 @@ bool LVGLCameraDisplay::on_raw_frame(const esp_video_camera::RawFrame &frame) {
   // lv_image_set_src() alone would leave the two disagreeing.
   lv_canvas_set_draw_buf(canvas, &this->draw_buf_);
   lv_obj_invalidate(canvas);
+  this->refresh_done_ = false;
 
   // What actually reaches the screen, on an interval. The rate here is the one
   // the camera sets; how much of it LVGL manages to draw is its own business,
@@ -105,10 +115,14 @@ bool LVGLCameraDisplay::on_raw_frame(const esp_video_camera::RawFrame &frame) {
     this->stats_frames_ = 0;
   }
 
-  // Keep this frame. LVGL renders from it during its own loop, which runs in
-  // this same task, so it is finished with it well before the next frame
-  // arrives -- and that is when the camera takes this buffer back.
+  // Keep this frame: LVGL reads it until the refresh above completes, and the
+  // camera only takes it back once a later frame has been accepted in its
+  // place, which the test at the top of this function delays until then.
   return true;
+}
+
+void LVGLCameraDisplay::refresh_done_cb_(lv_event_t *event) {
+  static_cast<LVGLCameraDisplay *>(lv_event_get_user_data(event))->refresh_done_ = true;
 }
 
 void LVGLCameraDisplay::on_raw_frames_stopped() {

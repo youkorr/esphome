@@ -45,6 +45,8 @@ class LVGLCameraDisplay : public Component, public esp_video_camera::RawFrameCon
  protected:
   /// Stop the canvas drawing from a buffer the camera is about to take back.
   void release_canvas_();
+  /// LVGL has finished a refresh, so the buffer it was reading is free again.
+  static void refresh_done_cb_(lv_event_t *event);
 
   esp_video_camera::ESPVideoCamera *camera_{nullptr};
   /// The address of the widget pointer, not the pointer: LVGL fills its widget
@@ -58,6 +60,11 @@ class LVGLCameraDisplay : public Component, public esp_video_camera::RawFrameCon
   lv_draw_buf_t draw_buf_{};
   bool draw_buf_ready_{false};
   bool warned_no_canvas_{false};
+  /// False while LVGL is drawing, which it does in several partial passes when
+  /// the draw buffer is smaller than the screen. Swapping the frame in the
+  /// middle of that leaves the top of the picture from one frame and the bottom
+  /// from the next, which shows as a tear across anything that moves.
+  bool refresh_done_{true};
 
   // Frames drawn between two reports. The camera only counts what it encodes,
   // and a canvas makes it encode nothing, so without this a display-only

@@ -64,15 +64,16 @@ struct RawFrame {
 /// The buffer belongs to the capture device and is handed back to it as soon as
 /// nobody needs it, so a consumer that wants to keep the pixels around (to draw
 /// from them later, without copying) says so by returning true, and the camera
-/// holds that one buffer back from the sensor. At most one frame is held: the
-/// answer to each call replaces the last one, so returning true for a new frame
-/// releases the previous one and returning false releases it without taking
-/// anything in its place.
+/// holds that one buffer back from the sensor. At most one frame is held.
+///
+/// Declining a frame keeps whatever is already held, which is what a consumer
+/// that is still reading the previous one has to be able to say. Letting go
+/// entirely is a separate, explicit call: release_raw_frame().
 class RawFrameConsumer {
  public:
-  /// @return true to keep reading `frame` after this call returns, false when
-  ///         the consumer wants no frame held at all -- including the one it
-  ///         may have kept last time, which is released either way.
+  /// @return true to keep reading `frame` after this call returns, which
+  ///         releases whatever was held before it; false to skip this frame and
+  ///         carry on with the one already held.
   virtual bool on_raw_frame(const RawFrame &frame) = 0;
   /// The capture stopped and the buffers are gone; drop any pointer into them.
   virtual void on_raw_frames_stopped() = 0;
@@ -129,7 +130,11 @@ class ESPVideoCamera : public camera::Camera {
   void set_raw_frame_consumer(RawFrameConsumer *consumer) { this->raw_consumer_ = consumer; }
   /// Whether that consumer currently wants frames. Like an API stream, this
   /// keeps the pipeline up; unlike one, it does not run the JPEG encoder.
-  void request_raw_frames(bool enable) { this->raw_frames_wanted_ = enable; }
+  /// Switching it off also gives back any frame the consumer was holding.
+  void request_raw_frames(bool enable);
+  /// Hand back the frame the consumer is holding, if any. It must not read the
+  /// pixels after this.
+  void release_raw_frame();
   bool has_raw_frames() const { return this->is_hw_jpeg_; }
 
   // camera::Camera -------------------------------------------------------------
