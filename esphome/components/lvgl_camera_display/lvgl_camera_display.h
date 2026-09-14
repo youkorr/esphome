@@ -58,6 +58,12 @@ class LVGLCameraDisplay : public Component, public esp_video_camera::RawFrameCon
   lv_draw_buf_t draw_buf_{};
   bool draw_buf_ready_{false};
   bool warned_no_canvas_{false};
+
+  // Frames drawn between two reports. The camera only counts what it encodes,
+  // and a canvas makes it encode nothing, so without this a display-only
+  // configuration reports no rate anywhere.
+  uint32_t stats_since_ms_{0};
+  uint32_t stats_frames_{0};
 };
 
 template<typename... Ts> class StartAction : public Action<Ts...> {
