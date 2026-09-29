@@ -14,7 +14,7 @@
 // without a word of complaint.
 #include <sdkconfig.h>
 
-#include "esp_cache.h"         // esp_cache_msync()
+#include "esp_cache.h"  // esp_cache_msync()
 #include "esp_heap_caps.h"
 #include "esp_idf_version.h"   // ESP_IDF_VERSION, for usb_host_config_t::peripheral_map
 #include "esp_memory_utils.h"  // esp_ptr_external_ram()
