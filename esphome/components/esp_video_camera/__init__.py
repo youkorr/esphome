@@ -86,26 +86,7 @@ _SENSOR_FORMATS = {
         (1280, 720): "RAW8_1280X720_30FPS",
         (1920, 1080): "RAW8_1920X1080_30FPS",
     },
-    # This driver spells its sizes with a lowercase x, where every other one
-    # uses an uppercase X. The spelling has to match: a Kconfig name that does
-    # not exist is written to sdkconfig and dropped without a word.
-    # 1920x1080 also comes in a two-lane variant, reachable through
-    # sdkconfig_options; the one here is the single-lane form the driver lists
-    # first.
-    "ov02c10": {
-        (1288, 728): "RAW10_1288x728_30FPS",
-        (1920, 1080): "RAW10_1920x1080_30FPS",
-    },
 }
-
-# Two shapes of Kconfig live behind those names. The SC202CS and SC2336 have a
-# menu that admits a format to the driver's table and a separate choice of which
-# one to boot with, CAMERA_<SENSOR>_MIPI_DEFAULT_FMT_<FMT>, depending on the
-# first. The OV5647 and OV02C10 have no admission menu at all: every format is
-# always in the table and the members of the boot choice are the format symbols
-# themselves. Writing the second name for those two would reach a symbol Kconfig
-# has never heard of, and be dropped without a word.
-_SENSORS_WITH_BOOT_FORMAT_CHOICE = frozenset({"sc202cs", "sc2336"})
 
 # The SC2356 module (M5Stack Tab5, reTerminal) is SC202CS silicon behind a
 # different part number, and is driven by the SC202CS driver.
@@ -470,16 +451,12 @@ async def to_code(config):
             f"CONFIG_CAMERA_{sensor.upper()}_AUTO_DETECT_MIPI_INTERFACE_SENSOR", True
         )
 
+    # A format is only choosable as the boot default once its own
+    # CAMERA_<SENSOR>_MIPI_* symbol has put it in the driver's format table.
     if (fmt := _sensor_format_symbol(config)) is not None:
-        model = config[CONF_SENSOR_MODEL]
-        sensor = model.upper()
-        # Admits the format to the driver's table on the sensors that have such
-        # a menu, and selects it outright on the ones that do not.
+        sensor = config[CONF_SENSOR_MODEL].upper()
         add_idf_sdkconfig_option(f"CONFIG_CAMERA_{sensor}_MIPI_{fmt}", True)
-        if model in _SENSORS_WITH_BOOT_FORMAT_CHOICE:
-            add_idf_sdkconfig_option(
-                f"CONFIG_CAMERA_{sensor}_MIPI_DEFAULT_FMT_{fmt}", True
-            )
+        add_idf_sdkconfig_option(f"CONFIG_CAMERA_{sensor}_MIPI_DEFAULT_FMT_{fmt}", True)
 
     # Colour tuning for the SC202CS, which the SC2356 module (M5Stack Tab5,
     # reTerminal) is the same silicon as. The image processing algorithms read
