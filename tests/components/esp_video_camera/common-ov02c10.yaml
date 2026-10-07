@@ -1,0 +1,9 @@
+# A third sensor, and the one whose Kconfig is spelled differently: the OV02C10
+# names its formats with a lowercase x and has no separate boot-format choice.
+esp_video_camera:
+  name: Test OV02C10 Camera
+  i2c_id: i2c_bus
+  device: jpeg
+  sensor_model: ov02c10
+  resolution: 1288x728
+  max_framerate: 10
