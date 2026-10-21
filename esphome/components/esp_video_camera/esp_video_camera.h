@@ -119,6 +119,9 @@ class ESPVideoCamera : public camera::Camera {
   // Tear the capture down and arm a retry when `err` means the device is gone
   // (a USB-UVC camera unplugged mid-stream). Returns true when it handled `err`.
   bool handle_device_gone_(int err);
+  // Tear the capture down and arm a retry, for a fault the component cannot
+  // undo in place. `why` is logged as the reason.
+  void restart_capture_(const LogString *why);
   bool configure_capture_format_(uint32_t pixelformat);
   bool setup_capture_buffers_();
   // Hardware-JPEG path: capture RGB565 (sensor/ISP) -> JPEG M2M encoder.

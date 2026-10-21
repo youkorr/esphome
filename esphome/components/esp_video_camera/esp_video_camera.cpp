@@ -755,6 +755,13 @@ bool ESPVideoCamera::handle_device_gone_(int err) {
   return true;
 }
 
+void ESPVideoCamera::restart_capture_(const LogString *why) {
+  ESP_LOGW(TAG, "Restarting the capture: %s", LOG_STR_ARG(why));
+  this->stop_capture_();
+  this->capture_retry_pending_ = true;
+  this->capture_retry_at_ms_ = millis() + this->capture_retry_interval_ms_();
+}
+
 void ESPVideoCamera::deliver_frame_(const uint8_t *data, size_t length) {
   if (length == 0)
     return;
@@ -831,8 +838,13 @@ void ESPVideoCamera::loop_direct_capture_() {
     }
   }
 
+  // A buffer the driver would not take back is one it no longer holds, and
+  // nothing here can hand it over again: with three of them, three such
+  // failures leave the capture with nothing to fill and no way to say so. Start
+  // the capture over instead, which is what gets the buffers queued again.
   if (ioctl(this->capture_fd_, VIDIOC_QBUF, &buf) < 0) {
     ESP_LOGW(TAG, "VIDIOC_QBUF failed: %s", strerror(errno));
+    this->restart_capture_(LOG_STR("the driver would not take a buffer back"));
   }
 }
 
@@ -960,6 +972,7 @@ void ESPVideoCamera::loop_jpeg_pipeline_() {
   // already closed it.
   if (capture_alive && ioctl(this->capture_fd_, VIDIOC_QBUF, &cap_buf) < 0) {
     ESP_LOGW(TAG, "capture QBUF failed: %s", strerror(errno));
+    this->restart_capture_(LOG_STR("the driver would not take a buffer back"));
   }
 }
 
