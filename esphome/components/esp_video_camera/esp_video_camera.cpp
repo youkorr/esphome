@@ -392,11 +392,20 @@ void ESPVideoCamera::setup() {
   if (this->is_hw_jpeg_) {
     int csi_fd = open(ESP_VIDEO_MIPI_CSI_DEVICE_NAME, O_RDWR | O_NONBLOCK);
     if (csi_fd < 0) {
-      ESP_LOGE(TAG,
-               "No MIPI-CSI sensor detected: %s is unavailable. Check the sensor wiring and that it "
-               "answers on the configured I2C bus; the drivers built into this firmware are listed "
-               "in the config dump above.",
-               ESP_VIDEO_MIPI_CSI_DEVICE_NAME);
+      // Only a missing node means nothing answered the probe. Every other
+      // errno -- the node is busy, or this build may not open it -- is a
+      // different fault, and blaming the wiring for those sends the reader to
+      // look at hardware that is working.
+      const int err = errno;
+      if (err == ENOENT || err == ENODEV) {
+        ESP_LOGE(TAG,
+                 "No MIPI-CSI sensor detected: %s does not exist. Either no sensor answered on the "
+                 "configured I2C bus, or this firmware carries no driver for the one that did -- the "
+                 "drivers it was built with are listed in the config dump above.",
+                 ESP_VIDEO_MIPI_CSI_DEVICE_NAME);
+      } else {
+        ESP_LOGE(TAG, "Could not open %s: %s", ESP_VIDEO_MIPI_CSI_DEVICE_NAME, strerror(err));
+      }
       this->mark_failed();
       return;
     }
