@@ -62,6 +62,8 @@ static constexpr uint32_t INIT_POLL_SLICE_MS = 200;
 // leaves for the port's inrush. Only the USB path has a rail to wait on, so a
 // build without it must not carry this at all.
 static constexpr uint32_t VBUS_SETTLE_MS = 100;
+// How long the USB event pump waits before trying again after a failure.
+static constexpr uint32_t USB_PUMP_RETRY_MS = 100;
 #endif
 
 // Frame buffers are rounded up to this many bytes so that consecutive frames of
@@ -146,6 +148,11 @@ void usb_host_lib_daemon_task(void *param) {
       complained = true;
       ESP_LOGE(TAG, "USB host event pump failed: %s; devices will not enumerate", esp_err_to_name(err));
     }
+    // The call blocks until an event arrives, so it only returns at once when
+    // it has failed -- and then this loop would spin at full speed on its core
+    // for as long as the fault lasts. Back off instead, slowly enough to cost
+    // nothing and often enough to pick the pump back up by itself.
+    vTaskDelay(pdMS_TO_TICKS(USB_PUMP_RETRY_MS));
   }
 }
 
