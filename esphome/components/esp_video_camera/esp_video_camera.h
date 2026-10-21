@@ -206,6 +206,10 @@ class ESPVideoCamera : public camera::Camera {
   // a one-shot so it is said once per capture rather than every iteration.
   static constexpr uint32_t NO_FRAME_WARNING_MS = 5000;
   bool warned_no_frames_{false};
+  // When the capture device last handed back a frame. The stats counter cannot
+  // answer this: it is only cleared when a stats line is printed, so a source
+  // that delivers one frame and then stops leaves it non-zero for ever.
+  uint32_t last_capture_ms_{0};
 
   // Consumers (bit masks indexed by camera::CameraRequester). Written from the
   // requesting task, read by loop() in the main task, hence atomic. Everything

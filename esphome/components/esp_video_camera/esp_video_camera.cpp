@@ -697,10 +697,17 @@ void ESPVideoCamera::loop() {
   // Only while someone is watching: deliver_frame_() counts nothing during the
   // idle grace period, so this warned about a perfectly healthy camera every
   // time the last viewer went away.
+  // Measured from the last frame the capture device handed back, not from the
+  // stats counter: that one is cleared only when a stats line is printed, so a
+  // source that delivers one frame and then stops keeps it above zero and the
+  // check below would never fire again.
   if (!wanted) {
+    // Both clocks stand still while nobody is watching: the stats line would
+    // otherwise average over the idle time, and the check below would fire the
+    // moment a viewer came back after a long pause.
     this->stats_since_ms_ = millis();
-  } else if (!this->warned_no_frames_ && this->stats_frames_ == 0 &&
-             (millis() - this->stats_since_ms_) >= NO_FRAME_WARNING_MS) {
+    this->last_capture_ms_ = this->stats_since_ms_;
+  } else if (!this->warned_no_frames_ && (millis() - this->last_capture_ms_) >= NO_FRAME_WARNING_MS) {
     this->warned_no_frames_ = true;
     ESP_LOGW(TAG,
              "Streaming from %s for %us without a single frame; restarting the capture. esp_video reports several "
@@ -803,6 +810,8 @@ void ESPVideoCamera::loop_direct_capture_() {
   }
 
   if (buf.index < (uint32_t) this->num_capture_buffers_) {
+    if (buf.bytesused > 0)
+      this->last_capture_ms_ = millis();
     this->deliver_frame_((const uint8_t *) this->capture_buffers_[buf.index].start, buf.bytesused);
   } else {
     // Not a frame this component mapped. Dropping it silently would look like a
@@ -846,6 +855,9 @@ void ESPVideoCamera::loop_jpeg_pipeline_() {
     ESP_LOGW(TAG, "The driver returned buffer %u; only %d are mapped", (unsigned) cap_buf.index,
              this->num_capture_buffers_);
   }
+
+  if (cap_buf.index < (uint32_t) this->num_capture_buffers_ && cap_buf.bytesused > 0)
+    this->last_capture_ms_ = millis();
 
   bool encoder_broken = false;
   if (wanted && due && cap_buf.index < (uint32_t) this->num_capture_buffers_ && cap_buf.bytesused > 0) {
@@ -1131,6 +1143,9 @@ bool ESPVideoCamera::start_capture_() {
   this->last_frame_ms_ = 0;
   this->idle_since_ms_ = 0;
   this->stats_since_ms_ = millis();
+  // A fresh capture has not missed anything yet, so the stall check starts
+  // counting from here rather than from whenever the last one stopped.
+  this->last_capture_ms_ = this->stats_since_ms_;
   this->stats_frames_ = 0;
   this->stats_bytes_ = 0;
   this->logged_qbuf_failure_ = false;
