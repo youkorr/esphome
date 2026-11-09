@@ -405,9 +405,16 @@ async def to_code(config):
     cg.add(var.set_jpeg_quality(config[CONF_JPEG_QUALITY]))
     cg.add(var.set_max_framerate(config[CONF_MAX_FRAMERATE]))
 
-    # Also in esphome/idf_component.yml (keep the versions in step): that entry
-    # covers the clang-tidy builds, this call is what adds it to "src" REQUIRES.
-    add_idf_component(name="espressif/esp_video", ref="2.3.0")
+    # TEST BRANCH ONLY, not for the pull request: esp_video from git, for the
+    # one-line fix 79ae611 (2 November, in no release yet). ESP-IDF 5.5.6
+    # rewrote the MIPI-CSI driver and an ESP32-P4 below rev v3.0 needs that fix,
+    # or the sensor will not start. Back to a published version once it ships.
+    add_idf_component(
+        name="espressif/esp_video",
+        repo="https://github.com/espressif/esp-video-components",
+        ref="79ae6117e58e0cf831c8e96820af72e877b5fb82",
+        path="esp_video",
+    )
     if config[CONF_ENABLE_UVC]:
         # USB-UVC host driver, aligned with esp_video 2.3.0's own dependency.
         add_idf_component(name="espressif/usb_host_uvc", ref="2.5.*")
