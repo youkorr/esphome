@@ -10,6 +10,7 @@
 #include "esphome/components/lvgl/lvgl_esphome.h"
 #include "esphome/core/automation.h"
 #include "esphome/core/component.h"
+#include "esphome/core/helpers.h"
 
 namespace esphome::lvgl_camera_display {
 
@@ -36,6 +37,9 @@ class LVGLCameraDisplay : public Component, public esp_video_camera::RawFrameCon
   /// Start or stop asking the camera for frames. Stopping lets the camera shut
   /// the sensor down, so a display that is switched off costs nothing.
   void set_enabled(bool enabled);
+  /// Call before set_enabled(). The camera is polled from the main loop, which
+  /// otherwise sleeps up to 16 ms between passes while a ready frame waits.
+  void set_fast_loop(bool fast_loop) { this->fast_loop_ = fast_loop; }
   bool is_enabled() const { return this->enabled_; }
 
   // esp_video_camera::RawFrameConsumer -------------------------------------------
@@ -54,6 +58,8 @@ class LVGLCameraDisplay : public Component, public esp_video_camera::RawFrameCon
   /// before that has happened.
   lv_obj_t **canvas_{nullptr};
   bool enabled_{true};
+  bool fast_loop_{false};
+  HighFrequencyLoopRequester high_freq_;
 
   /// The descriptor handed to LVGL. Its geometry is fixed on the first frame;
   /// after that only the data pointer changes, which is the whole point.

@@ -33,6 +33,13 @@ void LVGLCameraDisplay::set_enabled(bool enabled) {
   this->enabled_ = enabled;
   if (this->camera_ != nullptr)
     this->camera_->request_raw_frames(enabled);
+  if (this->fast_loop_) {
+    if (enabled) {
+      this->high_freq_.start();
+    } else {
+      this->high_freq_.stop();
+    }
+  }
   // Switching off gives the camera its buffer back, so the canvas must stop
   // drawing from it before the sensor starts writing over it again.
   if (!enabled)
@@ -61,8 +68,10 @@ void LVGLCameraDisplay::dump_config() {
   ESP_LOGCONFIG(TAG,
                 "LVGL Camera Display:\n"
                 "  Camera: %s\n"
-                "  Enabled: %s",
-                this->camera_ == nullptr ? "none" : this->camera_->get_name().c_str(), YESNO(this->enabled_));
+                "  Enabled: %s\n"
+                "  Fast loop: %s",
+                this->camera_ == nullptr ? "none" : this->camera_->get_name().c_str(), YESNO(this->enabled_),
+                YESNO(this->fast_loop_));
 }
 
 bool LVGLCameraDisplay::on_raw_frame(const esp_video_camera::RawFrame &frame) {

@@ -22,6 +22,7 @@ DEPENDENCIES = ["esp_video_camera", "lvgl"]
 
 CONF_CAMERA_ID = "camera_id"
 CONF_CANVAS_ID = "canvas_id"
+CONF_FAST_LOOP = "fast_loop"
 
 lvgl_camera_display_ns = cg.esphome_ns.namespace("lvgl_camera_display")
 LVGLCameraDisplay = lvgl_camera_display_ns.class_("LVGLCameraDisplay", cg.Component)
@@ -34,6 +35,9 @@ CONFIG_SCHEMA = cv.Schema(
         cv.Required(CONF_CAMERA_ID): cv.use_id(ESPVideoCamera),
         cv.Required(CONF_CANVAS_ID): cv.use_id(lv_canvas_t),
         cv.Optional(CONF_ENABLED, default=True): cv.boolean,
+        # Keep the main loop from sleeping while frames are shown, so a frame is
+        # taken as soon as the sensor has it rather than at the next 16 ms tick.
+        cv.Optional(CONF_FAST_LOOP, default=False): cv.boolean,
     }
 ).extend(cv.COMPONENT_SCHEMA)
 
@@ -81,6 +85,8 @@ async def to_code(config: ConfigType) -> None:
     canvas = await cg.get_variable(config[CONF_CANVAS_ID])
     cg.add(var.set_canvas(cg.RawExpression(f"&{canvas}")))
 
+    if config[CONF_FAST_LOOP]:
+        cg.add(var.set_fast_loop(True))
     cg.add(var.set_enabled(config[CONF_ENABLED]))
 
 
