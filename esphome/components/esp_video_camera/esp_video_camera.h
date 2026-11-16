@@ -80,6 +80,29 @@ class RawFrameConsumer {
   virtual ~RawFrameConsumer() = default;
 };
 
+/// Sees every un-encoded frame before anything else does -- before the display
+/// consumer and before the JPEG encoder -- for a component that analyses the
+/// picture (face detection, say) and may mark it up.
+///
+/// Unlike the consumer there can be any number of these, and none of them keeps
+/// the frame: the buffer belongs to the next in line the moment the call
+/// returns, so a listener that needs the pixels for longer copies what it needs.
+/// Whatever it draws into `pixels` is in the picture the display shows and the
+/// JPEG Home Assistant receives.
+class RawFrameListener {
+ public:
+  /// Whether frames are wanted right now. A listener that says yes keeps the
+  /// pipeline running with nobody else watching, the way a display does.
+  virtual bool wants_raw_frames() const = 0;
+  /// Called from the camera's loop() with the frame already readable through
+  /// the cache.
+  /// @return true when it wrote into `pixels`, so the camera writes them back
+  ///         out of the cache before the encoder and the display read them by
+  ///         DMA.
+  virtual bool on_raw_frame_seen(uint8_t *pixels, const RawFrame &frame) = 0;
+  virtual ~RawFrameListener() = default;
+};
+
 /// Reader used by the API to stream the JPEG bytes out in chunks.
 class ESPVideoCameraImageReader : public camera::CameraImageReader {
  public:
@@ -136,6 +159,8 @@ class ESPVideoCamera : public camera::Camera {
   /// pixels after this.
   void release_raw_frame();
   bool has_raw_frames() const { return this->is_hw_jpeg_; }
+  /// Add a component that sees every frame first; see RawFrameListener.
+  void add_raw_frame_listener(RawFrameListener *listener) { this->raw_listeners_.push_back(listener); }
 
   // camera::Camera -------------------------------------------------------------
   void add_listener(camera::CameraListener *listener) override { this->listeners_.push_back(listener); }
@@ -181,9 +206,12 @@ class ESPVideoCamera : public camera::Camera {
   // Direct path: a source that already delivers JPEG/MJPEG (USB-UVC / device).
   bool start_direct_capture_();
   void loop_direct_capture_();
-  /// Offer one dequeued capture buffer to the raw consumer. Returns true when
-  /// the consumer kept it, which is the caller's cue not to re-queue it.
+  /// Show one dequeued capture buffer to the listeners, then offer it to the
+  /// raw consumer. Returns true when the consumer kept it, which is the
+  /// caller's cue not to re-queue it.
   bool offer_raw_frame_(uint32_t index);
+  /// Whether any listener wants frames at the moment.
+  bool raw_listener_wanted_() const;
   /// Give the capture buffer at `index` back to the sensor/ISP device.
   bool requeue_capture_buffer_(uint32_t index);
 
@@ -276,6 +304,7 @@ class ESPVideoCamera : public camera::Camera {
   // Both belong to loop() too: the consumer is called from it.
   RawFrameConsumer *raw_consumer_{nullptr};
   bool raw_frames_wanted_{false};
+  std::vector<RawFrameListener *> raw_listeners_;
   /// Index of the capture buffer withheld from the sensor for the consumer, or
   /// -1 when none is. Only the index is kept: an MMAP buffer needs nothing else
   /// to be queued again, and this way the V4L2 types stay out of the header.

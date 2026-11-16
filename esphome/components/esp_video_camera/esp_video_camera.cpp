@@ -642,10 +642,12 @@ bool ESPVideoCamera::init_pipeline_() {
 // ===========================================================================
 void ESPVideoCamera::loop() {
   // Two kinds of consumer, and they do not want the same work done. An API or
-  // web stream wants encoded frames; a display wants the pixels and no encode
-  // at all. Either keeps the pipeline up.
+  // web stream wants encoded frames; a display, or a listener analysing the
+  // picture, wants the pixels and no encode at all. Any of them keeps the
+  // pipeline up.
   const bool wanted = (this->stream_requesters_ != 0) || (this->single_requesters_ != 0) ||
-                      (this->raw_consumer_ != nullptr && this->raw_frames_wanted_);
+                      (this->raw_consumer_ != nullptr && this->raw_frames_wanted_) ||
+                      this->raw_listener_wanted_();
 
   // Only reachable with UVC: setup() fails the component outright otherwise.
   // Retried on demand and on a long timer, and never waited for here:
@@ -860,9 +862,9 @@ void ESPVideoCamera::loop_jpeg_pipeline_() {
   if (have_frame)
     this->last_capture_ms_ = millis();
 
-  // Offer the pixels before the encoder is handed them: both only read the
-  // buffer, and doing it first means a display still gets frames when the
-  // encoder is broken.
+  // Show the pixels before the encoder is handed them. The listeners may draw
+  // into them, which the encoded frame should carry, and doing it first means a
+  // display still gets frames when the encoder is broken.
   const bool consumer_kept_frame = have_frame && this->offer_raw_frame_(cap_buf.index);
 
   bool encoder_broken = false;
@@ -1003,8 +1005,52 @@ bool ESPVideoCamera::requeue_capture_buffer_(uint32_t index) {
   return true;
 }
 
+bool ESPVideoCamera::raw_listener_wanted_() const {
+  for (auto *listener : this->raw_listeners_) {
+    if (listener->wants_raw_frames())
+      return true;
+  }
+  return false;
+}
+
 bool ESPVideoCamera::offer_raw_frame_(uint32_t index) {
-  if (this->raw_consumer_ == nullptr || !this->raw_frames_wanted_)
+  const bool consumer = this->raw_consumer_ != nullptr && this->raw_frames_wanted_;
+  if (!consumer && !this->raw_listener_wanted_())
+    return false;
+
+  auto *data = (uint8_t *) this->capture_buffers_[index].start;
+  const size_t length = this->capture_buffers_[index].length;
+  // The ISP wrote these bytes by DMA, so the cache may still hold what was
+  // there before. Two conditions on the call: only PSRAM sits behind the data
+  // cache -- internal SRAM is coherent, and esp_cache_msync() rejects an
+  // address in it outright -- and the region has to be cache-line aligned,
+  // which is why this passes the whole mapped buffer rather than the bytes the
+  // frame happens to occupy. Done once here, for the listeners and the
+  // consumer alike.
+  const bool cached = esp_ptr_external_ram(data);
+  if (cached)
+    esp_cache_msync(data, length, ESP_CACHE_MSYNC_FLAG_DIR_M2C | ESP_CACHE_MSYNC_FLAG_TYPE_DATA);
+
+  RawFrame frame{};
+  frame.data = data;
+  frame.width = this->capture_width_;
+  frame.height = this->capture_height_;
+  frame.stride = this->capture_stride_;
+  frame.format = camera::PIXEL_FORMAT_RGB565;
+
+  bool drew = false;
+  for (auto *listener : this->raw_listeners_) {
+    if (listener->wants_raw_frames() && listener->on_raw_frame_seen(data, frame))
+      drew = true;
+  }
+  // What a listener drew is in the cache, and the encoder and the display read
+  // this buffer by DMA. Without the write-back they would show the frame as
+  // the ISP left it, with a stale line of drawing here and there wherever a
+  // cache line happened to be evicted.
+  if (drew && cached)
+    esp_cache_msync(data, length, ESP_CACHE_MSYNC_FLAG_DIR_C2M | ESP_CACHE_MSYNC_FLAG_TYPE_DATA);
+
+  if (!consumer)
     return false;
 
   // Keeping a buffer back costs the sensor one, so there has to be one to
@@ -1018,25 +1064,6 @@ bool ESPVideoCamera::offer_raw_frame_(uint32_t index) {
     }
     return false;
   }
-
-  auto *data = (const uint8_t *) this->capture_buffers_[index].start;
-  // The ISP wrote these bytes by DMA, so the cache may still hold what was
-  // there before. Two conditions on the call: only PSRAM sits behind the data
-  // cache -- internal SRAM is coherent, and esp_cache_msync() rejects an
-  // address in it outright -- and the region has to be cache-line aligned,
-  // which is why this passes the whole mapped buffer rather than the bytes the
-  // frame happens to occupy.
-  if (esp_ptr_external_ram(data)) {
-    esp_cache_msync((void *) data, this->capture_buffers_[index].length,
-                    ESP_CACHE_MSYNC_FLAG_DIR_M2C | ESP_CACHE_MSYNC_FLAG_TYPE_DATA);
-  }
-
-  RawFrame frame{};
-  frame.data = data;
-  frame.width = this->capture_width_;
-  frame.height = this->capture_height_;
-  frame.stride = this->capture_stride_;
-  frame.format = camera::PIXEL_FORMAT_RGB565;
   return this->raw_consumer_->on_raw_frame(frame);
 }
 
