@@ -21,9 +21,12 @@ its own: through the `.esp_cam_sensor_detect_fn` section, kept in by
   5a38351, 75b9e4a): the white window centred on this sensor's own neutral,
   R/G 0.53 and B/G 0.64, where the pull request's was the SC2336's and threw
   the real white pixels out (a magenta cast at night); white balance steps of
-  0.05 from 100 grey pixels, where 0.34/0.40 from 2000 hardly moved; and the
-  exposure aiming at 100 with the shadows weighted, low_light_priority. The
-  colour matrix and the gamma are the pull request's. The copy kept in
+  0.05 from 100 grey pixels, where 0.34/0.40 from 2000 hardly moved; and
+  exposure and gain moved every third frame. The exposure target is the pull
+  request's, 79 (62-105) with the highlights weighted: Ehuntabi/p4's 100 with
+  the shadows weighted is for a camera facing a lamp, and in an ordinary room
+  it came out too bright and too hard. The colour matrix and the gamma are the
+  pull request's. The copy kept in
   esphome_esp-video had a much stronger matrix (2.0 and -0.8 in its blue
   row), which turned every dark area purple-blue.
 - `Kconfig` lists the formats in the table's order, so the boot format index

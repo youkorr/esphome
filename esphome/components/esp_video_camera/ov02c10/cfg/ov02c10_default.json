@@ -40,9 +40,9 @@
             "f_n0": 0.32,
             "f_m0": 0.42,
             "luma_adjust": {
-                "target_low": 85,
-                "target_high": 115,
-                "target": 100,
+                "target_low": 62,
+                "target_high": 105,
+                "target": 79,
                 "low_threshold": 14,
                 "low_regions": 5,
                 "high_threshold": 239,
@@ -75,7 +75,7 @@
                     1
                 ]
             },
-            "mode": "low_light_priority",
+            "mode": "high_light_priority",
             "high_light_priority": {
                 "low_threshold": 119,
                 "high_threshold": 202,
