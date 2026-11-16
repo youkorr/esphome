@@ -15,12 +15,17 @@ its own: through the `.esp_cam_sensor_detect_fn` section, kept in by
   `private_include/ov02c10_custom_formats.h` are added to its format table,
   its include path changed, and esp_video 2.x's line time and exposure in
   lines are taken.
-- `cfg/ov02c10_default.json` is that pull request's tuning, as it stands:
-  the SC2356 module's tuning, which put that sensor's colour right on these
-  boards, with five exposure values set for the OV02C10 by its author, who
-  tested it on a Guition JC4880P443C. The copy kept in esphome_esp-video had
-  a much stronger colour matrix (2.0 and -0.8 in its blue row), which turned
-  every dark area purple-blue and its noise into blotches.
+- `cfg/ov02c10_default.json` is that pull request's tuning -- the SC2356
+  module's, with its mild colour matrix -- with the white balance and the
+  exposure measured on an OV02C10 in Ehuntabi/p4 (commits 3510238, 1a83112,
+  5a38351, 75b9e4a): the white window centred on this sensor's own neutral,
+  R/G 0.53 and B/G 0.64, where the pull request's was the SC2336's and threw
+  the real white pixels out (a magenta cast at night); white balance steps of
+  0.05 from 100 grey pixels, where 0.34/0.40 from 2000 hardly moved; and the
+  exposure aiming at 100 with the shadows weighted, low_light_priority. The
+  colour matrix and the gamma are the pull request's. The copy kept in
+  esphome_esp-video had a much stronger matrix (2.0 and -0.8 in its blue
+  row), which turned every dark area purple-blue.
 - `Kconfig` lists the formats in the table's order, so the boot format index
   is the right one. Its defaults are what the driver was run with: 1288x728,
   CSI line sync off, gain limited to 16x, analog gain first.
