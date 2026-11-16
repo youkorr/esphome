@@ -68,6 +68,10 @@ struct ov02c10_cam {
     ((int32_t)(((double)v) * 1000000 / (sf)->fps / (sf)->isp_info->isp_v1_info.vts / EXPOSURE_V4L2_UNIT_US + 0.5))
  
  #define OV02C10_PID         0x5602
+ /* One line's exposure time in ns, which esp_video 2.x's ISP pipeline converts
+  * every exposure with: left at 0 it divides by zero, and hands esp_ipa an
+  * exposure range of 0 to 0 us. */
+ #define OV02C10_TLINE_NS(pclk, hts) ((uint32_t)((uint64_t)(hts) * 1000000000ULL / (pclk)))
  #define OV02C10_SENSOR_NAME "OV02C10"
  #define OV02C10_AE_TARGET_DEFAULT (0x50)
  
@@ -972,6 +976,7 @@ static const ov02c10_gain_t ov02c10_gain_map[] = {
              .pclk = 81666700,
              .vts = 1164,
              .hts = 2280,
+             .tline_ns = OV02C10_TLINE_NS(81666700, 2280),
              .gain_def = 0x01,
              .exp_def = 0x46c,
              .bayer_type = ESP_CAM_SENSOR_BAYER_GBRG,
@@ -984,6 +989,7 @@ static const ov02c10_gain_t ov02c10_gain_map[] = {
             // .pclk = 88333333,
              .vts = 1164,
              .hts = 2280,
+             .tline_ns = OV02C10_TLINE_NS(81666700, 2280),
              .gain_def = 0x01,
              .exp_def = 0x46c,
              .bayer_type = ESP_CAM_SENSOR_BAYER_GBRG,
@@ -996,6 +1002,7 @@ static const ov02c10_gain_t ov02c10_gain_map[] = {
              .pclk = 81666700,
              .vts = 2328,
              .hts = 1140,
+             .tline_ns = OV02C10_TLINE_NS(81666700, 1140),
              .gain_def = 0x01,
              .exp_def = 0x46c,
              .bayer_type = ESP_CAM_SENSOR_BAYER_GBRG,
@@ -1450,7 +1457,19 @@ static esp_err_t ov02c10_set_para_value(esp_cam_sensor_device_t *dev, uint32_t i
     }
     case ESP_CAM_SENSOR_GROUP_EXP_GAIN: {
         esp_cam_sensor_gh_exp_gain_t *value = (esp_cam_sensor_gh_exp_gain_t *)arg;
-        uint32_t ori_exp = EXPOSURE_V4L2_TO_OV02C10(value->exposure_us, dev->cur_format);
+        /* esp_video 2.x's ISP pipeline gives the exposure in lines, in
+         * exposure_val, and leaves exposure_us at 0: read only the latter and
+         * every auto-exposure step sets the shortest exposure there is. Either,
+         * as esp_cam_sensor's own drivers take it. */
+        uint32_t ori_exp;
+        if (value->exposure_us != 0) {
+            ori_exp = EXPOSURE_V4L2_TO_OV02C10(value->exposure_us, dev->cur_format);
+        } else if (value->exposure_val != 0) {
+            ori_exp = value->exposure_val;
+        } else {
+            ret = ESP_ERR_INVALID_ARG;
+            break;
+        }
         ret = ov02c10_write(dev->sccb_handle, OV02C10_REG_GROUP_HOLD, OV02C10_GROUP_HOLD_START);
         ret |= ov02c10_set_exp_val(dev, ori_exp);
         ret |= ov02c10_set_total_gain_val(dev, value->gain_index);

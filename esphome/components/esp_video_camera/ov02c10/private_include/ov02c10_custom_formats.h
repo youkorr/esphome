@@ -68,7 +68,7 @@ const esp_cam_sensor_isp_info_t ov02c10_custom_isp_info = {
         .vts = 1164,
         .exp_def = 0x46c,
         .gain_def = 0x01,
-        .tline_ns = 0,
+        .tline_ns = 27918,  /* hts / pclk, as in ov02c10.c */
         .bayer_type = ESP_CAM_SENSOR_BAYER_GBRG,
     }
 };
