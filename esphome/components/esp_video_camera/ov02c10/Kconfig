@@ -51,18 +51,6 @@ menu "OV02C10 (carried by ESPHome's esp_video_camera)"
                 Send a line short packet for each line. Off is what the
                 driver was run with.
 
-        config CAMERA_OV02C10_BLACK_LEVEL
-            int "Black level the sensor leaves in every pixel, at 10 bits"
-            default 0
-            range 0 1023
-            help
-                The sensor's black level target (0x4002/0x4003). The formats
-                write 64, which an ISP takes off with its black level
-                correction -- and an ESP32-P4 below v3.0 has none, so 64
-                stayed in the picture as a purple haze in dark areas. 0 has
-                the sensor take its measured black off itself. 64 is the
-                value the formats were written with.
-
         config CAMERA_OV02C10_ISP_AF_ENABLE
             bool "Drive the VCM motor pins"
             default n

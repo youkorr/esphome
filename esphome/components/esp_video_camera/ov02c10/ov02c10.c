@@ -84,10 +84,6 @@ struct ov02c10_cam {
  #ifndef CONFIG_CAMERA_OV02C10_MIPI_IF_FORMAT_INDEX_DEFAULT
  #define CONFIG_CAMERA_OV02C10_MIPI_IF_FORMAT_INDEX_DEFAULT 0
  #endif
- #ifndef CONFIG_CAMERA_OV02C10_BLACK_LEVEL
- #define CONFIG_CAMERA_OV02C10_BLACK_LEVEL 0
- #endif
-
  /* Kconfig leaves a bool that is off undefined, and the format table below
   * uses this one as a value: off is what this sensor was run with. */
  #ifndef CONFIG_CAMERA_OV02C10_CSI_LINESYNC_ENABLE
@@ -1600,19 +1596,6 @@ static esp_err_t ov02c10_set_para_value(esp_cam_sensor_device_t *dev, uint32_t i
 
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Set format regs fail");
-        return ESP_CAM_SENSOR_ERR_FAILED_SET_FORMAT;
-    }
-
-    /* The black level the sensor leaves in every pixel, over every format's
-     * own 0x0040. An ESP32-P4 below v3.0 has no black level correction in its
-     * ISP, so 64 stayed in the picture: through the white balance gains and
-     * the colour matrix it became a purple haze and blotches in every dark
-     * area. 0 lets the sensor take its measured black off itself. */
-    ret = ov02c10_set_reg_bits(dev->sccb_handle, OV02C10_REG_BLC_TARGET_H, 0, 2,
-                               (CONFIG_CAMERA_OV02C10_BLACK_LEVEL >> 8) & 0x03);
-    ret |= ov02c10_write(dev->sccb_handle, OV02C10_REG_BLC_TARGET_L, CONFIG_CAMERA_OV02C10_BLACK_LEVEL & 0xff);
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Set black level fail");
         return ESP_CAM_SENSOR_ERR_FAILED_SET_FORMAT;
     }
 
