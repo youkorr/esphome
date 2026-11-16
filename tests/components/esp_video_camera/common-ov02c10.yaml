@@ -1,0 +1,9 @@
+# The OV02C10, whose driver this component carries in ov02c10/: it is only
+# built when named, and its Kconfig has a boot choice and no admission menu.
+esp_video_camera:
+  name: Test OV02C10 Camera
+  i2c_id: i2c_bus
+  device: jpeg
+  sensor_model: ov02c10
+  resolution: 1920x1080
+  max_framerate: 10

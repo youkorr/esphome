@@ -1513,6 +1513,9 @@ void ESPVideoCamera::dump_config() {
 #ifdef CONFIG_CAMERA_SC2336
     drivers += " SC2336(0x30)";
 #endif
+#ifdef CONFIG_CAMERA_OV02C10
+    drivers += " OV02C10(0x36)";
+#endif
     ESP_LOGCONFIG(TAG,
                   "  XCLK: %s\n"
                   "  MIPI-CSI drivers:%s",

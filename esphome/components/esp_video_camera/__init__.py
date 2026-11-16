@@ -5,7 +5,9 @@ Publishes the Espressif esp_video (V4L2) stream to Home Assistant as a native
 hardware JPEG encoder, and with USB-UVC cameras.
 
 All Espressif sources are pulled through the IDF component manager (managed
-components) — nothing is vendored.
+components). The one exception is ``ov02c10/``: esp_cam_sensor has no driver
+for that sensor, so this component carries one, and adds it to the build only
+when ``sensor_model: ov02c10`` asks for it.
 """
 
 import logging
@@ -88,9 +90,32 @@ _SENSOR_FORMATS = {
     },
 }
 
+# Not in espressif/esp_cam_sensor, in any version: the driver is carried in
+# ov02c10/ next to this file, an ESP-IDF component of its own, and only goes
+# into a build that names the sensor -- so unlike the three above it is not
+# auto-detected on a board that did not ask for it. Its formats are its own
+# Kconfig's, in the driver's table order; 1288x728 is the one it boots in and
+# the one it was run with. 1920x1080 also comes in a two-lane variant,
+# reachable through sdkconfig_options.
+_CARRIED_SENSOR_FORMATS = {
+    "ov02c10": {
+        (1288, 728): "RAW10_1288X728_30FPS",
+        (640, 480): "RAW10_640X480_30FPS",
+        (800, 600): "RAW10_800X600_30FPS",
+        (480, 640): "RAW10_480X640_30FPS",
+        (640, 368): "RAW10_640X368_30FPS",
+        (1920, 1080): "RAW10_1920X1080_30FPS",
+    },
+}
+
 # The SC2356 module (M5Stack Tab5, reTerminal) is SC202CS silicon behind a
 # different part number, and is driven by the SC202CS driver.
 _SENSOR_ALIASES = {"sc2356": "sc202cs"}
+
+
+def _formats(model):
+    """The output formats a sensor has, wherever its driver comes from."""
+    return _SENSOR_FORMATS.get(model) or _CARRIED_SENSOR_FORMATS[model]
 
 # Convenience names. They are only accepted when the chosen sensor actually has
 # that size -- none of these sensors does QVGA, for instance.
@@ -106,10 +131,11 @@ _RESOLUTION_ALIASES = {
 def _validate_sensor_model(value):
     value = cv.string(value).lower()
     value = _SENSOR_ALIASES.get(value, value)
-    if value not in _SENSOR_FORMATS:
+    if value not in _SENSOR_FORMATS and value not in _CARRIED_SENSOR_FORMATS:
+        known = sorted([*_SENSOR_FORMATS, *_CARRIED_SENSOR_FORMATS])
         raise cv.Invalid(
             f"sensor_model '{value}' is not one of the MIPI-CSI sensors this component "
-            f"compiles in: {', '.join(sorted(_SENSOR_FORMATS))} "
+            f"compiles in: {', '.join(known)} "
             f"(aliases: {', '.join(sorted(_SENSOR_ALIASES))})."
         )
     return value
@@ -215,7 +241,7 @@ def _sensor_format_symbol(config):
     if resolution == "auto" or _is_uvc(config[CONF_DEVICE]):
         return None
     width, height = (int(part) for part in resolution.split("x"))
-    return _SENSOR_FORMATS[config[CONF_SENSOR_MODEL]][width, height]
+    return _formats(config[CONF_SENSOR_MODEL])[width, height]
 
 
 def _validate_resolution_for_sensor(config):
@@ -233,7 +259,7 @@ def _validate_resolution_for_sensor(config):
         )
 
     width, height = (int(part) for part in resolution.split("x"))
-    formats = _SENSOR_FORMATS[model]
+    formats = _formats(model)
     if (width, height) not in formats:
         supported = ", ".join(f"{w}x{h}" for w, h in sorted(formats))
         raise cv.Invalid(
@@ -458,11 +484,25 @@ async def to_code(config):
             f"CONFIG_CAMERA_{sensor.upper()}_AUTO_DETECT_MIPI_INTERFACE_SENSOR", True
         )
 
-    # A format is only choosable as the boot default once its own
-    # CAMERA_<SENSOR>_MIPI_* symbol has put it in the driver's format table.
+    # A driver this component carries, only when it is asked for by name.
+    # ESPHome compiles none of ov02c10/ itself; it is its own IDF component.
+    model = config.get(CONF_SENSOR_MODEL)
+    if model in _CARRIED_SENSOR_FORMATS:
+        add_idf_component(name=model, path=str(Path(__file__).parent / model))
+        add_idf_sdkconfig_option(f"CONFIG_CAMERA_{model.upper()}", True)
+        add_idf_sdkconfig_option(
+            f"CONFIG_CAMERA_{model.upper()}_AUTO_DETECT_MIPI_INTERFACE_SENSOR", True
+        )
+
     if (fmt := _sensor_format_symbol(config)) is not None:
-        sensor = config[CONF_SENSOR_MODEL].upper()
-        add_idf_sdkconfig_option(f"CONFIG_CAMERA_{sensor}_MIPI_{fmt}", True)
+        sensor = model.upper()
+        # A format is only choosable as the boot default once its own
+        # CAMERA_<SENSOR>_MIPI_* symbol has put it in the driver's format table.
+        # A carried driver's table always holds every format, and its Kconfig
+        # has only the boot choice: a name Kconfig has never heard of would be
+        # dropped without a word.
+        if model not in _CARRIED_SENSOR_FORMATS:
+            add_idf_sdkconfig_option(f"CONFIG_CAMERA_{sensor}_MIPI_{fmt}", True)
         add_idf_sdkconfig_option(f"CONFIG_CAMERA_{sensor}_MIPI_DEFAULT_FMT_{fmt}", True)
 
     # Colour tuning for the SC202CS, which the SC2356 module (M5Stack Tab5,

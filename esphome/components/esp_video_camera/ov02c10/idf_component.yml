@@ -1,0 +1,10 @@
+description: OV02C10 camera sensor driver for esp_cam_sensor, carried by ESPHome's esp_video_camera
+targets:
+  - esp32p4
+# No esp_cam_sensor here: esp_video brings it, from its own repository under
+# the name esp_cam_sensor, and declaring it again pulls a second copy from the
+# registry as espressif__esp_cam_sensor -- ESP-IDF then refuses the build
+# ("Can't decide which one to pick"). REQUIRES esp_cam_sensor in
+# CMakeLists.txt finds whichever one esp_video brought.
+dependencies:
+  idf: ">=5.4"

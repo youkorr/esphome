@@ -1,0 +1,91 @@
+# The OV02C10 is not in espressif/esp_cam_sensor, so ESPHome's esp_video_camera
+# carries the driver itself. esp_video_camera writes these from the YAML; the
+# defaults are what the driver was run with on a board.
+menu "OV02C10 (carried by ESPHome's esp_video_camera)"
+
+    config CAMERA_OV02C10
+        bool "OV02C10"
+        default n
+
+    if CAMERA_OV02C10
+        config CAMERA_OV02C10_AUTO_DETECT_MIPI_INTERFACE_SENSOR
+            bool "Detect for MIPI interface sensor"
+            default y
+
+        # The members follow the driver's format table, in order: the index
+        # below is what picks the boot format out of that table.
+        choice CAMERA_OV02C10_MIPI_DEFAULT_FMT
+            prompt "Default format select"
+            default CAMERA_OV02C10_MIPI_DEFAULT_FMT_RAW10_1288X728_30FPS
+
+            config CAMERA_OV02C10_MIPI_DEFAULT_FMT_RAW10_1288X728_30FPS
+                bool "RAW10 1288x728 30fps, MIPI 1 lane"
+            config CAMERA_OV02C10_MIPI_DEFAULT_FMT_RAW10_640X480_30FPS
+                bool "RAW10 640x480 30fps, MIPI 1 lane (4:3, crops the sides)"
+            config CAMERA_OV02C10_MIPI_DEFAULT_FMT_RAW10_800X600_30FPS
+                bool "RAW10 800x600 30fps, MIPI 1 lane (4:3, crops the sides)"
+            config CAMERA_OV02C10_MIPI_DEFAULT_FMT_RAW10_480X640_30FPS
+                bool "RAW10 480x640 30fps, MIPI 1 lane (portrait)"
+            config CAMERA_OV02C10_MIPI_DEFAULT_FMT_RAW10_640X368_30FPS
+                bool "RAW10 640x368 30fps, MIPI 1 lane"
+            config CAMERA_OV02C10_MIPI_DEFAULT_FMT_RAW10_1920X1080_30FPS
+                bool "RAW10 1920x1080 30fps, MIPI 1 lane"
+            config CAMERA_OV02C10_MIPI_DEFAULT_FMT_RAW10_1920X1080_2LANE_30FPS
+                bool "RAW10 1920x1080 30fps, MIPI 2 lanes"
+        endchoice
+
+        config CAMERA_OV02C10_MIPI_IF_FORMAT_INDEX_DEFAULT
+            int
+            default 0 if CAMERA_OV02C10_MIPI_DEFAULT_FMT_RAW10_1288X728_30FPS
+            default 1 if CAMERA_OV02C10_MIPI_DEFAULT_FMT_RAW10_640X480_30FPS
+            default 2 if CAMERA_OV02C10_MIPI_DEFAULT_FMT_RAW10_800X600_30FPS
+            default 3 if CAMERA_OV02C10_MIPI_DEFAULT_FMT_RAW10_480X640_30FPS
+            default 4 if CAMERA_OV02C10_MIPI_DEFAULT_FMT_RAW10_640X368_30FPS
+            default 5 if CAMERA_OV02C10_MIPI_DEFAULT_FMT_RAW10_1920X1080_30FPS
+            default 6 if CAMERA_OV02C10_MIPI_DEFAULT_FMT_RAW10_1920X1080_2LANE_30FPS
+
+        config CAMERA_OV02C10_CSI_LINESYNC_ENABLE
+            bool "CSI line sync enable"
+            default n
+            help
+                Send a line short packet for each line. Off is what the
+                driver was run with.
+
+        config CAMERA_OV02C10_ISP_AF_ENABLE
+            bool "Drive the VCM motor pins"
+            default n
+
+        config CAMERA_OV02C10_ABSOLUTE_GAIN_LIMIT
+            int "Maximum absolute gain limit, x1000"
+            default 16000
+            range 4000 126016
+            help
+                The gain an application may ask for, times 1000. Excessive
+                gain worsens the noise and heats the sensor.
+
+        choice CAMERA_OV02C10_ABS_GAIN_MAP_PRIORITY
+            prompt "Gain map select"
+            default CAMERA_OV02C10_ANA_GAIN_PRIORITY
+
+            config CAMERA_OV02C10_ANA_GAIN_PRIORITY
+                bool "Analog gain priority"
+            config CAMERA_OV02C10_DIG_GAIN_PRIORITY
+                bool "Digital gain priority"
+        endchoice
+
+        choice CAMERA_OV02C10_IPA_JSON_CONFIGURATION_FILE
+            prompt "IPA JSON configuration file"
+            default CAMERA_OV02C10_DEFAULT_IPA_JSON_CONFIGURATION_FILE
+
+            config CAMERA_OV02C10_DEFAULT_IPA_JSON_CONFIGURATION_FILE
+                bool "Default (cfg/ov02c10_default.json)"
+            config CAMERA_OV02C10_CUSTOMIZED_IPA_JSON_CONFIGURATION_FILE
+                bool "Customized"
+        endchoice
+
+        config CAMERA_OV02C10_CUSTOMIZED_IPA_JSON_CONFIGURATION_FILE_PATH
+            string "OV02C10 customized JSON configuration file path"
+            depends on CAMERA_OV02C10_CUSTOMIZED_IPA_JSON_CONFIGURATION_FILE
+    endif
+
+endmenu
