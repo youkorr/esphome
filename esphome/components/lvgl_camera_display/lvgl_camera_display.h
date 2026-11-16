@@ -49,6 +49,9 @@ class LVGLCameraDisplay : public Component, public esp_video_camera::RawFrameCon
  protected:
   /// Stop the canvas drawing from a buffer the camera is about to take back.
   void release_canvas_();
+  /// Clear the canvas's own buffer the first time this canvas is seen, and
+  /// keep it so release_canvas_() can give it back.
+  void take_canvas_(lv_obj_t *canvas);
   /// LVGL has finished a refresh, so the buffer it was reading is free again.
   static void refresh_done_cb_(lv_event_t *event);
 
@@ -65,7 +68,11 @@ class LVGLCameraDisplay : public Component, public esp_video_camera::RawFrameCon
   /// after that only the data pointer changes, which is the whole point.
   lv_draw_buf_t draw_buf_{};
   bool draw_buf_ready_{false};
+  bool refresh_cb_added_{false};
   bool warned_no_canvas_{false};
+  /// The canvas as LVGL built it, and the buffer it came with.
+  lv_obj_t *own_canvas_{nullptr};
+  lv_draw_buf_t *own_buf_{nullptr};
   /// False while LVGL is drawing, which it does in several partial passes when
   /// the draw buffer is smaller than the screen. Swapping the frame in the
   /// middle of that leaves the top of the picture from one frame and the bottom

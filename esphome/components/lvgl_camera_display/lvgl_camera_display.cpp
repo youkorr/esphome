@@ -5,6 +5,9 @@
 #include "esphome/core/application.h"
 #include "esphome/core/log.h"
 
+#include <esp_cache.h>
+#include <esp_memory_utils.h>
+
 namespace esphome::lvgl_camera_display {
 
 static const char *const TAG = "lvgl_camera_display";
@@ -12,6 +15,35 @@ static const char *const TAG = "lvgl_camera_display";
 // How often the frame rate reaching the canvas is reported. This is the
 // component's only recurring log line.
 static constexpr uint32_t STATS_INTERVAL_MS = 10000;
+
+// The canvas's own buffer is what ESPHome's lvgl allocated for it, and nothing
+// clears it: PSRAM keeps its contents across a reset and a flash, so until the
+// first frame replaces it the canvas shows whatever an earlier firmware drew
+// there -- a dashboard, a test picture. Painted once, with the canvas's own
+// bg_color when the YAML gave it one (the colour it meant to be seen before the
+// camera starts) and black otherwise; a format with alpha is made transparent.
+static bool paint_own_buffer(lv_obj_t *canvas) {
+  if (!lv_obj_check_type(canvas, &lv_canvas_class))
+    return false;
+  lv_draw_buf_t *buf = lv_canvas_get_draw_buf(canvas);
+  if (buf == nullptr || buf->data == nullptr)
+    return false;
+  lv_color_t color = lv_color_black();
+  lv_opa_t opa = LV_OPA_COVER;
+  lv_style_value_t value;
+  if (lv_color_format_has_alpha((lv_color_format_t) buf->header.cf)) {
+    opa = LV_OPA_TRANSP;
+  } else if (lv_obj_get_local_style_prop(canvas, LV_STYLE_BG_COLOR, &value, LV_PART_MAIN) == LV_STYLE_RES_FOUND) {
+    color = value.color;
+  }
+  lv_canvas_fill_bg(canvas, color, opa);  // invalidates the canvas too
+  // The fill went through the data cache, and a PPA draw unit reads the buffer
+  // by DMA straight from PSRAM: it would still find the old picture there.
+  if (esp_ptr_external_ram(buf->data))
+    esp_cache_msync(buf->data, buf->data_size,
+                    ESP_CACHE_MSYNC_FLAG_DIR_C2M | ESP_CACHE_MSYNC_FLAG_TYPE_DATA | ESP_CACHE_MSYNC_FLAG_UNALIGNED);
+  return true;
+}
 
 void LVGLCameraDisplay::setup() {
   if (this->camera_ == nullptr) {
@@ -27,6 +59,23 @@ void LVGLCameraDisplay::setup() {
   }
   this->camera_->set_raw_frame_consumer(this);
   this->camera_->request_raw_frames(this->enabled_);
+  if (this->canvas_ != nullptr && *this->canvas_ != nullptr)
+    this->take_canvas_(*this->canvas_);
+}
+
+void LVGLCameraDisplay::take_canvas_(lv_obj_t *canvas) {
+  if (canvas == this->own_canvas_)
+    return;
+  this->own_canvas_ = canvas;
+  this->own_buf_ = nullptr;
+  if (!lv_obj_check_type(canvas, &lv_canvas_class))
+    return;
+  lv_draw_buf_t *buf = lv_canvas_get_draw_buf(canvas);
+  // Never the frame descriptor: that buffer is the camera's.
+  if (buf == &this->draw_buf_ || !paint_own_buffer(canvas))
+    return;
+  this->own_buf_ = buf;
+  ESP_LOGD(TAG, "Canvas cleared until the first frame");
 }
 
 void LVGLCameraDisplay::set_enabled(bool enabled) {
@@ -48,7 +97,13 @@ void LVGLCameraDisplay::set_enabled(bool enabled) {
 
 void LVGLCameraDisplay::release_canvas_() {
   lv_obj_t *canvas = (this->canvas_ == nullptr) ? nullptr : *this->canvas_;
-  if (canvas != nullptr) {
+  if (canvas != nullptr && canvas == this->own_canvas_ && this->own_buf_ != nullptr) {
+    // Back to the canvas's own buffer, cleared in take_canvas_(): LVGL stops
+    // drawing from the sensor's, and the canvas stays a canvas whose actions
+    // (lvgl.canvas.fill and the rest) write somewhere real.
+    lv_canvas_set_draw_buf(canvas, this->own_buf_);
+    lv_obj_invalidate(canvas);
+  } else if (canvas != nullptr) {
     // A canvas is an image widget underneath, and clearing the source is what
     // stops LVGL redrawing from a buffer that is about to belong to the sensor
     // again. lv_canvas_set_draw_buf() has no null form to call here.
@@ -83,6 +138,7 @@ bool LVGLCameraDisplay::on_raw_frame(const esp_video_camera::RawFrame &frame) {
     }
     return false;
   }
+  this->take_canvas_(canvas);
 
   // A frame that arrives while LVGL is still reading the last one is dropped
   // rather than swapped in: the camera keeps holding the frame on screen, and
@@ -92,7 +148,12 @@ bool LVGLCameraDisplay::on_raw_frame(const esp_video_camera::RawFrame &frame) {
     return false;
 
   if (!this->draw_buf_ready_) {
-    lv_display_add_event_cb(lv_obj_get_display(canvas), refresh_done_cb_, LV_EVENT_REFR_READY, this);
+    // Once: draw_buf_ready_ goes false again at every stop, and each call
+    // would add another callback to the display.
+    if (!this->refresh_cb_added_) {
+      lv_display_add_event_cb(lv_obj_get_display(canvas), refresh_done_cb_, LV_EVENT_REFR_READY, this);
+      this->refresh_cb_added_ = true;
+    }
     lv_draw_buf_init(&this->draw_buf_, frame.width, frame.height, LV_COLOR_FORMAT_RGB565, frame.stride,
                      (void *) frame.data, frame.stride * frame.height);
     // Without this LVGL treats the buffer as constant image data and may skip
