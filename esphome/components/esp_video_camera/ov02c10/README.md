@@ -8,12 +8,19 @@ build with `add_idf_component()` only when the YAML says
 its own: through the `.esp_cam_sensor_detect_fn` section, kept in by
 `-u ov02c10_detect`.
 
-- `ov02c10.c`, `include/`, `private_include/ov02c10_regs.h`,
-  `private_include/ov02c10_settings.h` and `cfg/ov02c10_default.json` are
-  Espressif's driver, Apache-2.0 (`LICENSE`), as kept in
-  youkorr/esphome_esp-video. Modified: the formats of
-  `private_include/ov02c10_custom_formats.h` are added to its format table, and
-  its include path changed.
+- `ov02c10.c`, `include/`, `private_include/ov02c10_regs.h` and
+  `private_include/ov02c10_settings.h` are Espressif's driver, Apache-2.0
+  (`LICENSE`), as kept in youkorr/esphome_esp-video -- the driver proposed in
+  espressif/esp-video-components#46 and never merged. Modified: the formats of
+  `private_include/ov02c10_custom_formats.h` are added to its format table,
+  its include path changed, and esp_video 2.x's line time and exposure in
+  lines are taken.
+- `cfg/ov02c10_default.json` is that pull request's tuning, as it stands:
+  the SC2356 module's tuning, which put that sensor's colour right on these
+  boards, with five exposure values set for the OV02C10 by its author, who
+  tested it on a Guition JC4880P443C. The copy kept in esphome_esp-video had
+  a much stronger colour matrix (2.0 and -0.8 in its blue row), which turned
+  every dark area purple-blue and its noise into blotches.
 - `Kconfig` lists the formats in the table's order, so the boot format index
   is the right one. Its defaults are what the driver was run with: 1288x728,
   CSI line sync off, gain limited to 16x, analog gain first.
