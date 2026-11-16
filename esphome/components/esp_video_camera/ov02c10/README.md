@@ -16,7 +16,10 @@ its own: through the `.esp_cam_sensor_detect_fn` section, kept in by
   its include path changed.
 - `Kconfig` lists the formats in the table's order, so the boot format index
   is the right one. Its defaults are what the driver was run with: 1288x728,
-  CSI line sync off, gain limited to 16x, analog gain first.
+  CSI line sync off, gain limited to 16x, analog gain first -- except the
+  black level, `CAMERA_OV02C10_BLACK_LEVEL`, 0 where every format writes 64:
+  an ESP32-P4 below v3.0 has no black level correction in its ISP, so the 64
+  stayed in the picture as a purple haze in the dark areas.
 - `project_include.cmake` hands `cfg/ov02c10_default.json` to esp_ipa, as
   esp_cam_sensor does for its own sensors.
 

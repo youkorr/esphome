@@ -11,6 +11,11 @@ extern "C" {
 #endif
 
 #define OV02C10_REG_GROUP_HOLD              0x3208
+/* Black level target, 10 bits: [9:8] in the low bits of 0x4002, [7:0] in
+ * 0x4003. Every format writes 0x0040, the 64 that libcamera's OV02C10 helper
+ * also takes as this sensor's black level. */
+#define OV02C10_REG_BLC_TARGET_H            0x4002
+#define OV02C10_REG_BLC_TARGET_L            0x4003
 #define OV02C10_REG_GROUP_HOLD_DELAY        0x3800
 
 #define OV02C10_REG_DIG_COARSE_GAIN         0x3509
