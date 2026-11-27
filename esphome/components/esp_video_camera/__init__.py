@@ -456,6 +456,12 @@ async def to_code(config):
         "CONFIG_ESP_VIDEO_ENABLE_HW_JPEG_ENC_VIDEO_DEVICE",
     ):
         add_idf_sdkconfig_option(opt, True)
+
+    # MIPI DSI can enable DW-GDMA IRAM-safe callbacks for the whole firmware.
+    # Keep the CSI controller context in internal RAM as required by DW-GDMA,
+    # including when the default allocator would place it in PSRAM.
+    add_idf_sdkconfig_option("CONFIG_CAM_CTLR_MIPI_CSI_ISR_CACHE_SAFE", True)
+
     if config[CONF_ENABLE_UVC]:
         add_idf_sdkconfig_option("CONFIG_ESP_VIDEO_ENABLE_USB_UVC_VIDEO_DEVICE", True)
         # 2048: a UVC configuration descriptor overruns the 256-byte default and
