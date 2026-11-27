@@ -34,7 +34,9 @@ static constexpr uint32_t DSI_DMA_READ_PRIORITY = 15;
 struct DsiCallbackContext {
   SemaphoreHandle_t transfer;
   SemaphoreHandle_t frame;
+  uint32_t generation;
 };
+static_assert(__atomic_always_lock_free(sizeof(uint32_t), nullptr), "DMA generation must be ISR-safe");
 
 bool MIPI_DSI_ISR_ATTR MipiDsi::notify_refresh_ready(esp_lcd_panel_handle_t panel,
                                                      esp_lcd_dpi_panel_event_data_t *edata, void *user_ctx) {
@@ -53,6 +55,7 @@ bool MIPI_DSI_ISR_ATTR MipiDsi::notify_frame_complete(esp_lcd_panel_handle_t pan
                                                       esp_lcd_dpi_panel_event_data_t *edata, void *user_ctx) {
   auto *ctx = static_cast<DsiCallbackContext *>(user_ctx);
   BaseType_t need_yield = pdFALSE;
+  __atomic_add_fetch(&ctx->generation, 1U, __ATOMIC_RELEASE);
   xSemaphoreGiveFromISR(ctx->frame, &need_yield);
   return need_yield == pdTRUE;
 }
@@ -173,6 +176,8 @@ void MipiDsi::setup() {
   }
   ctx->transfer = this->io_lock_;
   ctx->frame = this->frame_complete_;
+  ctx->generation = 0;
+  this->callback_context_ = ctx;
   esp_lcd_dpi_panel_event_callbacks_t cbs = {
       .on_color_trans_done = notify_refresh_ready,
   };
@@ -182,6 +187,7 @@ void MipiDsi::setup() {
 #endif
   err = esp_lcd_dpi_panel_register_event_callbacks(this->handle_, &cbs, ctx);
   if (err != ESP_OK) {
+    this->callback_context_ = nullptr;
     heap_caps_free(ctx);
     this->smark_failed(LOG_STR("Failed to register callbacks"), err);
     return;
@@ -371,7 +377,7 @@ bool MipiDsi::wait_frame_fence_() {
 }
 
 bool MipiDsi::present_framebuffer(void *fb, bool defer) {
-  if (in_isr_context() || !is_main_loop_thread() || this->is_failed() || this->frame_complete_ == nullptr ||
+  if (this->native_fence_mode_ || in_isr_context() || !is_main_loop_thread() || this->is_failed() || this->frame_complete_ == nullptr ||
       fb == nullptr)
     return false;
   bool valid = false;
@@ -402,6 +408,75 @@ bool MipiDsi::present_framebuffer(void *fb, bool defer) {
   }
   if (!defer && !this->wait_frame_fence_())
     return false;
+  this->status_clear_warning();
+  return true;
+}
+
+uint8_t MipiDsi::native_buffer_index_(const void *fb) const {
+  if (fb != nullptr) {
+    for (uint8_t i = 0; i < this->num_fbs_; ++i) {
+      if (fb == this->framebuffers_[i])
+        return i;
+    }
+  }
+  return NativeFramebufferFence::NONE;
+}
+
+bool MipiDsi::acquire_native_framebuffer(void *fb) {
+  if (in_isr_context() || !is_main_loop_thread() || this->is_failed() || this->native_fence_failed_ ||
+      this->num_fbs_ != 3 || this->callback_context_ == nullptr || this->frame_complete_ == nullptr ||
+      (this->native_owner_ && !this->native_fence_mode_))
+    return false;
+  const uint8_t index = this->native_buffer_index_(fb);
+  if (index == NativeFramebufferFence::NONE)
+    return false;
+  if (!this->native_fence_mode_) {
+    this->native_fence_mode_ = true;
+    this->native_owner_ = true;
+    this->stop_poller();
+  }
+  // The semaphore is a wakeup hint, NOT the source of ownership. It can
+  // contain stale notifications or saturate; the generation cannot lose them.
+  // Recheck after every wakeup, with one bounded timeout for the entire wait.
+  const TickType_t started = xTaskGetTickCount();
+  for (;;) {
+    const uint32_t generation = __atomic_load_n(&this->callback_context_->generation, __ATOMIC_ACQUIRE);
+    if (this->native_fence_.acquire(index, generation))
+      return true;
+    const TickType_t elapsed = xTaskGetTickCount() - started;
+    if (elapsed >= this->frame_timeout_ticks_) {
+      this->native_fence_failed_ = true;
+      this->status_set_warning(LOG_STR("Native framebuffer acquisition timed out"));
+      return false;
+    }
+    xSemaphoreTake(this->frame_complete_, this->frame_timeout_ticks_ - elapsed);
+  }
+}
+
+bool MipiDsi::native_framebuffer_is_acquired(const void *fb) const {
+  return this->native_fence_mode_ && !this->native_fence_failed_ &&
+         this->native_fence_.is_acquired(this->native_buffer_index_(fb));
+}
+
+bool MipiDsi::present_acquired_framebuffer(void *fb) {
+  if (in_isr_context() || !is_main_loop_thread() || this->is_failed() ||
+      !this->native_framebuffer_is_acquired(fb))
+    return false;
+  const auto err = esp_lcd_panel_draw_bitmap(this->handle_, 0, 0, this->width_, this->height_, fb);
+  xSemaphoreTake(this->io_lock_, 0);
+  if (err != ESP_OK) {
+    // IDF may have changed ownership before reporting an error. Do not
+    // release the lease or guess which buffer is scanned out.
+    this->native_fence_failed_ = true;
+    this->status_set_warning(LOG_STR("Native framebuffer submission failed"));
+    ESP_LOGE(TAG, "Native framebuffer submission failed: %s", esp_err_to_name(err));
+    return false;
+  }
+  const uint32_t generation = __atomic_load_n(&this->callback_context_->generation, __ATOMIC_ACQUIRE);
+  if (!this->native_fence_.present(this->native_buffer_index_(fb), generation)) {
+    this->native_fence_failed_ = true;
+    return false;
+  }
   this->status_clear_warning();
   return true;
 }

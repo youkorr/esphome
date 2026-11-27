@@ -17,6 +17,7 @@
 #include "esp_lcd_panel_io.h"
 
 #include "esp_lcd_mipi_dsi.h"
+#include "native_framebuffer_fence.h"
 
 #include <utility>
 
@@ -38,6 +39,8 @@ const uint8_t MADCTL_MY = 0x80;
 const uint8_t MADCTL_MV = 0x20;     // row/column swap
 const uint8_t MADCTL_XFLIP = 0x02;  // Mirror the display horizontally
 const uint8_t MADCTL_YFLIP = 0x01;  // Mirror the display vertically
+
+struct DsiCallbackContext;
 
 class MipiDsi final : public display::Display {
  public:
@@ -77,6 +80,15 @@ class MipiDsi final : public display::Display {
   /// The previous submission is fenced before the next swap; never write to either of the two
   /// most recently submitted buffers. Do not mix deferred and synchronous modes or drawing APIs.
   bool present_framebuffer(void *fb, bool defer = false);
+
+  // Experimental per-buffer fencing. Exclusive main-loop writer, three
+  // buffers, no mixing with present_framebuffer or ordinary display drawing.
+  // Acquire BEFORE any CPU/PPA/DMA write, present only the acquired buffer.
+  // Failure is terminal for this mode: stop all rendering rather than reuse
+  // a buffer whose DMA ownership is uncertain.
+  bool acquire_native_framebuffer(void *fb);
+  bool native_framebuffer_is_acquired(const void *fb) const;
+  bool present_acquired_framebuffer(void *fb);
 
   void smark_failed(const LogString *message, esp_err_t err);
 
@@ -159,6 +171,11 @@ class MipiDsi final : public display::Display {
   SemaphoreHandle_t frame_complete_{};
   uint8_t pending_completions_{0};
   bool native_owner_{false};
+  bool native_fence_mode_{false};
+  bool native_fence_failed_{false};
+  NativeFramebufferFence native_fence_{};
+  DsiCallbackContext *callback_context_{nullptr};
+  uint8_t native_buffer_index_(const void *fb) const;
   TickType_t frame_timeout_ticks_{0};
   bool wait_frame_fence_();
   uint8_t num_fbs_{1};
